@@ -78,15 +78,6 @@ header {
   50%       { transform: scale(1.3); }
 }
 .bm-unknown { opacity: 0.45; }
-.bm-label {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 9px; font-weight: 500;
-  color: white;
-  text-shadow: 0 1px 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.8);
-  white-space: nowrap;
-  pointer-events: none;
-  letter-spacing: 0.02em;
-}
 
 /* ── Locate button ───────────────────────────────────────────────────────── */
 #btn-locate {
@@ -118,7 +109,6 @@ header {
   border-bottom: 1px solid var(--border);
   display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem;
 }
-.panel-name { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1.05rem; color: white; line-height: 1.3; }
 #panel-close {
   background: none; border: none; color: var(--muted); font-size: 1.1rem;
   cursor: pointer; padding: 0.1rem 0.25rem; line-height: 1; flex-shrink: 0;
@@ -215,7 +205,6 @@ header {
 <!-- Detail panel -->
 <div id="panel">
   <div class="panel-header">
-    <div class="panel-name" id="panel-name">—</div>
     <button id="panel-close" onclick="closePanel()">✕</button>
   </div>
   <div class="panel-body">
@@ -265,23 +254,17 @@ const markers   = {};  // id → L.Marker
 const feedState = {};  // id → feed data object
 let   activeFeedId = null;
 
-function shortName(name) {
-  // Strip common Hebrew prefix "חוף " for brevity on the label
-  return name.replace(/^חוף\s+/, "");
-}
-
 function markerHtml(feed) {
   const c     = COLORS[feed.status] || COLORS.unknown;
   const pulse = feed.status === "busy"    ? "bm-pulse"   : "";
   const dim   = feed.status === "unknown" ? "bm-unknown" : "";
   return `<div class="bm-wrap">
     <div class="bm ${pulse} ${dim}" style="background:${c.bg};box-shadow:0 0 10px ${c.glow},0 0 0 3px ${c.border}"></div>
-    <div class="bm-label">${shortName(feed.name)}</div>
   </div>`;
 }
 
 function makeIcon(feed) {
-  return L.divIcon({ className: "", html: markerHtml(feed), iconSize: [80, 42], iconAnchor: [40, 12] });
+  return L.divIcon({ className: "", html: markerHtml(feed), iconSize: [30, 30], iconAnchor: [15, 15] });
 }
 
 function upsertMarker(feed) {
@@ -306,8 +289,6 @@ function openPanel(id) {
 
   const c     = COLORS[feed.status] || COLORS.unknown;
   const label = LABELS[feed.status] || feed.status;
-
-  document.getElementById("panel-name").textContent = feed.name;
 
   const badge = document.getElementById("panel-badge");
   badge.textContent = label;
