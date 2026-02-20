@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0e1117">
+<title>Chof-Shi 🌊 — Beach Map</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0e1117; --surface: #161b24; --surface2: #1e2533; --border: rgba(255,255,255,0.07);
+  --text: #e8eaf0; --muted: #5a6070;
+  --empty: #22c55e; --low: #84cc16; --moderate: #f59e0b; --busy: #ef4444; --unknown: #6b7280;
+  --accent: #34d399;
+  --panel-w: 300px;
+}
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'IBM Plex Mono', monospace; overflow: hidden; }
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+header {
+  height: 52px; padding: 0 1.2rem;
+  display: flex; align-items: center; gap: 1rem;
+  background: rgba(14,17,23,0.97); backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  position: relative; z-index: 1000;
+}
+.brand { display: flex; align-items: baseline; gap: 0.6rem; margin-right: auto; flex-shrink: 0; }
+.brand-title { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.1rem; color: white; letter-spacing: -0.02em; }
+.brand-tag { font-size: 0.5rem; letter-spacing: 0.2em; color: var(--accent); text-transform: uppercase; border: 1px solid var(--accent); padding: 0.12rem 0.4rem; border-radius: 2px; }
+
+.status-chips { display: flex; gap: 0.5rem; align-items: center; }
+.chip {
+  display: flex; align-items: center; gap: 0.3rem;
+  font-size: 0.58rem; color: var(--muted);
+  background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+  border-radius: 20px; padding: 0.2rem 0.55rem; cursor: pointer;
+  transition: background 0.2s;
+}
+.chip:hover { background: rgba(255,255,255,0.08); }
+.chip-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.chip-count { font-weight: 500; color: var(--text); min-width: 1ch; }
+
+.conn-wrap { display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; }
+#conn-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--unknown); transition: background 0.3s; }
+#conn-dot.live  { background: var(--empty); box-shadow: 0 0 6px var(--empty); }
+#conn-dot.error { background: var(--busy);  box-shadow: 0 0 6px var(--busy); }
+#conn-label { font-size: 0.55rem; color: var(--muted); white-space: nowrap; }
+
+#updated-label { font-size: 0.55rem; color: var(--muted); white-space: nowrap; }
+
+/* ── Map ─────────────────────────────────────────────────────────────────── */
+#map { width: 100%; height: calc(100vh - 52px); }
+.leaflet-container { background: #2a3040; }
+.leaflet-tile { filter: brightness(1.0) saturate(0.85); }
+.leaflet-control-attribution { background: rgba(14,17,23,0.7) !important; color: var(--muted) !important; font-size: 0.5rem !important; }
+.leaflet-control-attribution a { color: var(--muted) !important; }
+.leaflet-control-zoom a { background: var(--surface) !important; color: var(--text) !important; border-color: var(--border) !important; font-size: 1rem !important; }
+.leaflet-control-zoom a:hover { background: var(--surface2) !important; }
+.leaflet-popup-content-wrapper, .leaflet-popup-tip { display: none; }
+
+/* ── Markers ─────────────────────────────────────────────────────────────── */
+.bm-wrap {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  cursor: pointer;
+}
+.bm {
+  width: 24px; height: 24px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.25);
+  transition: transform 0.2s ease, box-shadow 0.6s ease;
+}
+.bm-wrap:hover .bm { transform: scale(1.2); }
+.bm-busy { animation: bm-pulse 2.2s ease-in-out infinite; }
+@keyframes bm-pulse {
+  0%, 100% { transform: scale(1); }
+  50%       { transform: scale(1.3); }
+}
+.bm-unknown { opacity: 0.45; }
+.bm-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px; font-weight: 500;
+  color: white;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.8);
+  white-space: nowrap;
+  pointer-events: none;
+  letter-spacing: 0.02em;
+}
+
+/* ── Locate button ───────────────────────────────────────────────────────── */
+#btn-locate {
+  position: absolute; bottom: 100px; right: 14px; z-index: 1000;
+  width: 34px; height: 34px; border-radius: 4px;
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); font-size: 1rem; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.2s;
+}
+#btn-locate:hover { background: var(--surface2); }
+
+/* ── Detail panel ────────────────────────────────────────────────────────── */
+#panel {
+  position: absolute; top: 52px; right: 0; bottom: 0;
+  width: var(--panel-w);
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  z-index: 900;
+  transform: translateX(100%);
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+#panel.open { transform: translateX(0); }
+
+.panel-header {
+  padding: 1rem 1rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem;
+}
+.panel-name { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1.05rem; color: white; line-height: 1.3; }
+#panel-close {
+  background: none; border: none; color: var(--muted); font-size: 1.1rem;
+  cursor: pointer; padding: 0.1rem 0.25rem; line-height: 1; flex-shrink: 0;
+  transition: color 0.15s;
+}
+#panel-close:hover { color: var(--text); }
+
+.panel-body { padding: 0.85rem 1rem; flex: 1; overflow-y: auto; }
+
+.panel-badge {
+  display: inline-block; font-size: 0.52rem; letter-spacing: 0.12em;
+  text-transform: uppercase; padding: 0.2rem 0.6rem; border-radius: 3px;
+  font-weight: 600; margin-bottom: 0.75rem;
+}
+.panel-summary {
+  font-size: 0.68rem; line-height: 1.7;
+  color: rgba(232,234,240,0.8);
+  margin-bottom: 0.75rem;
+}
+.panel-meta { font-size: 0.52rem; color: var(--muted); line-height: 1.8; }
+.panel-meta span { display: block; }
+
+.panel-stale {
+  margin: 0 1rem 1rem;
+  font-size: 0.55rem; color: var(--muted);
+  text-align: center; padding: 0.4rem;
+  background: rgba(255,255,255,0.03); border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+/* ── Legend ──────────────────────────────────────────────────────────────── */
+#legend {
+  position: absolute; bottom: 32px; left: 14px; z-index: 1000;
+  background: rgba(22,27,36,0.92); border: 1px solid var(--border);
+  border-radius: 6px; padding: 0.7rem 0.9rem; backdrop-filter: blur(10px);
+}
+.legend-title { font-size: 0.5rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.45rem; }
+.legend-row { display: flex; align-items: center; gap: 0.45rem; font-size: 0.58rem; color: var(--text); margin-bottom: 0.25rem; }
+.legend-row:last-child { margin-bottom: 0; }
+.legend-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+/* ── Mobile ──────────────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .status-chips { display: none; }
+  #updated-label { display: none; }
+  #panel {
+    top: auto; left: 0; right: 0; bottom: 0;
+    width: 100%; height: 55%;
+    border-left: none; border-top: 1px solid var(--border);
+    border-radius: 14px 14px 0 0;
+    transform: translateY(100%);
+  }
+  #panel.open { transform: translateY(0); }
+  #legend { display: none; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <span class="brand-title">Chof-Shi 🌊</span>
+    <span class="brand-tag">Live</span>
+  </div>
+
+  <div class="status-chips">
+    <div class="chip">
+      <div class="chip-dot" style="background:var(--empty);box-shadow:0 0 4px var(--empty)"></div>
+      <span class="chip-count" id="c-empty">—</span>&nbsp;Empty
+    </div>
+    <div class="chip">
+      <div class="chip-dot" style="background:var(--low);box-shadow:0 0 4px var(--low)"></div>
+      <span class="chip-count" id="c-low">—</span>&nbsp;Low
+    </div>
+    <div class="chip">
+      <div class="chip-dot" style="background:var(--moderate);box-shadow:0 0 4px var(--moderate)"></div>
+      <span class="chip-count" id="c-mod">—</span>&nbsp;Moderate
+    </div>
+    <div class="chip">
+      <div class="chip-dot" style="background:var(--busy);box-shadow:0 0 4px var(--busy)"></div>
+      <span class="chip-count" id="c-busy">—</span>&nbsp;Busy
+    </div>
+  </div>
+
+  <span id="updated-label"></span>
+  <div class="conn-wrap">
+    <div id="conn-dot"></div>
+    <span id="conn-label">Connecting…</span>
+  </div>
+</header>
+
+<div id="map"></div>
+
+<!-- Detail panel -->
+<div id="panel">
+  <div class="panel-header">
+    <div class="panel-name" id="panel-name">—</div>
+    <button id="panel-close" onclick="closePanel()">✕</button>
+  </div>
+  <div class="panel-body">
+    <div class="panel-badge" id="panel-badge"></div>
+    <div class="panel-summary" id="panel-summary"></div>
+    <div class="panel-meta" id="panel-meta"></div>
+  </div>
+  <div class="panel-stale" id="panel-stale" style="display:none"></div>
+</div>
+
+<!-- Locate me -->
+<button id="btn-locate" title="My location" onclick="locateMe()">◎</button>
+
+<div id="legend">
+  <div class="legend-title">Crowd Level</div>
+  <div class="legend-row"><div class="legend-dot" style="background:var(--empty);box-shadow:0 0 5px var(--empty)"></div>Empty</div>
+  <div class="legend-row"><div class="legend-dot" style="background:var(--low);box-shadow:0 0 5px var(--low)"></div>Low</div>
+  <div class="legend-row"><div class="legend-dot" style="background:var(--moderate);box-shadow:0 0 5px var(--moderate)"></div>Moderate</div>
+  <div class="legend-row"><div class="legend-dot" style="background:var(--busy);box-shadow:0 0 5px var(--busy)"></div>Busy</div>
+  <div class="legend-row"><div class="legend-dot" style="background:var(--unknown)"></div>Unknown</div>
+</div>
+
+<script>
+const PROXY = "http://129.159.155.172:5050";
+
+const COLORS = {
+  empty:    { bg: "#22c55e", glow: "rgba(34,197,94,0.55)",   border: "rgba(34,197,94,0.4)"   },
+  low:      { bg: "#84cc16", glow: "rgba(132,204,22,0.55)",  border: "rgba(132,204,22,0.4)"  },
+  moderate: { bg: "#f59e0b", glow: "rgba(245,158,11,0.55)",  border: "rgba(245,158,11,0.4)"  },
+  busy:     { bg: "#ef4444", glow: "rgba(239,68,68,0.6)",    border: "rgba(239,68,68,0.45)"  },
+  unknown:  { bg: "#4b5563", glow: "transparent",            border: "transparent"            },
+};
+const LABELS = { empty: "Empty", low: "Low", moderate: "Moderate", busy: "Busy", unknown: "Unknown" };
+
+// ── Map init ──────────────────────────────────────────────────────────────────
+const map = L.map("map", { center: [32.105, 34.775], zoom: 12, zoomControl: true });
+L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  subdomains: "abcd", maxZoom: 19,
+}).addTo(map);
+
+// Close panel when clicking the map
+map.on("click", closePanel);
+
+// ── Marker management ─────────────────────────────────────────────────────────
+const markers   = {};  // id → L.Marker
+const feedState = {};  // id → feed data object
+let   activeFeedId = null;
+
+function shortName(name) {
+  // Strip common Hebrew prefix "חוף " for brevity on the label
+  return name.replace(/^חוף\s+/, "");
+}
+
+function markerHtml(feed) {
+  const c     = COLORS[feed.status] || COLORS.unknown;
+  const pulse = feed.status === "busy"    ? "bm-pulse"   : "";
+  const dim   = feed.status === "unknown" ? "bm-unknown" : "";
+  return `<div class="bm-wrap">
+    <div class="bm ${pulse} ${dim}" style="background:${c.bg};box-shadow:0 0 10px ${c.glow},0 0 0 3px ${c.border}"></div>
+    <div class="bm-label">${shortName(feed.name)}</div>
+  </div>`;
+}
+
+function makeIcon(feed) {
+  return L.divIcon({ className: "", html: markerHtml(feed), iconSize: [80, 42], iconAnchor: [40, 12] });
+}
+
+function upsertMarker(feed) {
+  if (!feed.location) return;
+  feedState[feed.id] = feed;
+  const [lat, lng] = feed.location;
+  if (markers[feed.id]) {
+    markers[feed.id].setIcon(makeIcon(feed));
+    if (activeFeedId === feed.id) openPanel(feed.id); // refresh panel if open
+  } else {
+    markers[feed.id] = L.marker([lat, lng], { icon: makeIcon(feed) })
+      .addTo(map)
+      .on("click", (e) => { L.DomEvent.stopPropagation(e); openPanel(feed.id); });
+  }
+}
+
+// ── Detail panel ──────────────────────────────────────────────────────────────
+function openPanel(id) {
+  const feed = feedState[id];
+  if (!feed) return;
+  activeFeedId = id;
+
+  const c     = COLORS[feed.status] || COLORS.unknown;
+  const label = LABELS[feed.status] || feed.status;
+
+  document.getElementById("panel-name").textContent = feed.name;
+
+  const badge = document.getElementById("panel-badge");
+  badge.textContent = label;
+  badge.style.cssText = `background:${c.bg}22;color:${c.bg};border:1px solid ${c.bg}55`;
+
+  document.getElementById("panel-summary").textContent = feed.summary || "No analysis yet.";
+
+  const ts = feed.updated
+    ? new Date(feed.updated * 1000).toLocaleString("en-IL", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })
+    : null;
+  const metaEl = document.getElementById("panel-meta");
+  metaEl.innerHTML = [
+    ts      ? `<span>🕐 ${ts}</span>` : "",
+    feed.model ? `<span>🤖 ${feed.model}</span>` : "",
+  ].join("");
+
+  // Show stale warning if >2 hours old
+  const staleEl = document.getElementById("panel-stale");
+  if (feed.updated && (Date.now() / 1000 - feed.updated) > 7200) {
+    staleEl.textContent = "⚠ Data may be outdated";
+    staleEl.style.display = "";
+  } else {
+    staleEl.style.display = "none";
+  }
+
+  document.getElementById("panel").classList.add("open");
+}
+
+function closePanel() {
+  activeFeedId = null;
+  document.getElementById("panel").classList.remove("open");
+}
+
+// ── Locate me ─────────────────────────────────────────────────────────────────
+function locateMe() {
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(pos => {
+    map.setView([pos.coords.latitude, pos.coords.longitude], 14);
+  });
+}
+
+// ── Summary counts ────────────────────────────────────────────────────────────
+function updateCounts() {
+  const c = { empty: 0, low: 0, moderate: 0, busy: 0, unknown: 0 };
+  Object.values(feedState).forEach(f => { c[f.status] = (c[f.status] || 0) + 1; });
+  document.getElementById("c-empty").textContent = c.empty;
+  document.getElementById("c-low").textContent   = c.low;
+  document.getElementById("c-mod").textContent   = c.moderate;
+  document.getElementById("c-busy").textContent  = c.busy;
+}
+
+// ── "Updated X min ago" label ─────────────────────────────────────────────────
+let lastUpdateTs = null;
+function startUpdatedTicker() {
+  setInterval(() => {
+    if (!lastUpdateTs) return;
+    const ago = Math.round((Date.now() - lastUpdateTs) / 60000);
+    document.getElementById("updated-label").textContent =
+      ago < 1 ? "Updated just now" : `Updated ${ago}m ago`;
+  }, 30000);
+}
+
+// ── SSE connection ────────────────────────────────────────────────────────────
+function connect() {
+  const es = new EventSource(`${PROXY}/events`);
+
+  es.onopen = () => {
+    document.getElementById("conn-dot").className = "live";
+    document.getElementById("conn-label").textContent = "Live";
+  };
+
+  es.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === "full") {
+      msg.feeds.forEach(upsertMarker);
+      document.getElementById("conn-dot").className = "live";
+      document.getElementById("conn-label").textContent = `Live · ${msg.feeds.length}`;
+    } else if (msg.type === "update") {
+      upsertMarker(msg);
+      lastUpdateTs = Date.now();
+      const ts = new Date().toLocaleTimeString("en-IL", { hour: "2-digit", minute: "2-digit" });
+      document.getElementById("updated-label").textContent = `Updated ${ts}`;
+    }
+    updateCounts();
+  };
+
+  es.onerror = () => {
+    document.getElementById("conn-dot").className = "error";
+    document.getElementById("conn-label").textContent = "Reconnecting…";
+  };
+}
+
+connect();
+startUpdatedTicker();
+</script>
+</body>
+</html>
