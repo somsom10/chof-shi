@@ -370,37 +370,27 @@ function startUpdatedTicker() {
   }, 30000);
 }
 
-// ── SSE connection ────────────────────────────────────────────────────────────
-function connect() {
-  const es = new EventSource(`${PROXY}/events`);
-
-  es.onopen = () => {
-    document.getElementById("conn-dot").className = "live";
-    document.getElementById("conn-label").textContent = "Live";
-  };
-
-  es.onmessage = (e) => {
-    const msg = JSON.parse(e.data);
-    if (msg.type === "full") {
-      msg.feeds.forEach(upsertMarker);
-      document.getElementById("conn-dot").className = "live";
-      document.getElementById("conn-label").textContent = `Live · ${msg.feeds.length}`;
-    } else if (msg.type === "update") {
-      upsertMarker(msg);
+// ── Polling ───────────────────────────────────────────────────────────────────
+function poll() {
+  fetch(PROXY + "/status")
+    .then(r => r.json())
+    .then(feeds => {
+      feeds.forEach(upsertMarker);
+      updateCounts();
       lastUpdateTs = Date.now();
       const ts = new Date().toLocaleTimeString("en-IL", { hour: "2-digit", minute: "2-digit" });
       document.getElementById("updated-label").textContent = `Updated ${ts}`;
-    }
-    updateCounts();
-  };
-
-  es.onerror = () => {
-    document.getElementById("conn-dot").className = "error";
-    document.getElementById("conn-label").textContent = "Reconnecting…";
-  };
+      document.getElementById("conn-dot").className = "live";
+      document.getElementById("conn-label").textContent = `Live · ${feeds.length}`;
+    })
+    .catch(() => {
+      document.getElementById("conn-dot").className = "error";
+      document.getElementById("conn-label").textContent = "Reconnecting…";
+    });
 }
 
-connect();
+poll();
+setInterval(poll, 60000);
 startUpdatedTicker();
 </script>
 </body>
